@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: skills-index
+        name: Update skills index in README.md
+        entry: python3 scripts/generate-skills-index.py
+        language: system
+        files: ^(README\.md|[^/]+/(SKILL|README)\.md)$
+        pass_filenames: false
