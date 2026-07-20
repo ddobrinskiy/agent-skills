@@ -1,9 +1,9 @@
 # Sibling-file context hook (Claude Code)
 
-A `PostToolUse` hook for [Claude Code](https://claude.com/claude-code) that
-auto-injects a file's "sibling" into the agent's context whenever either half
-of the pair is read or edited — so the agent never sees one half in
-isolation.
+A `PostToolUse` + `UserPromptSubmit` hook for [Claude
+Code](https://claude.com/claude-code) that auto-injects a file's "sibling"
+into the agent's context whenever either half of the pair is read, edited, or
+`@`-mentioned in a prompt — so the agent never sees one half in isolation.
 
 **Motivating case:** a dbt model split across `model.sql` (the transform) and
 `model.yml` (description + column tests). Agents routinely edit the SQL
@@ -22,38 +22,51 @@ edit JSON, and run shell commands) in the repo where you want this installed:
 > Read `README.md` and `sibling-context-hook.sh` from
 > `github.com/ddobrinskiy/agent-skills/sibling-file-context-hook`. Install the
 > hook in this repo: copy the script to `.claude/hooks/sibling-context-hook.sh`
-> (executable), merge the `PostToolUse` entry into `.claude/settings.json`
-> (create it if missing, don't clobber existing hooks), figure out the right
-> `SIBLING_EXT_A` / `SIBLING_EXT_B` / `SIBLING_DIR_SCOPE` values for our
-> paired-file convention, and verify it end-to-end per the "Testing" section
-> before reporting done.
+> (executable), merge the `PostToolUse` **and** `UserPromptSubmit` entries into
+> `.claude/settings.json` (create it if missing, don't clobber existing
+> hooks), figure out the right `SIBLING_EXT_A` / `SIBLING_EXT_B` /
+> `SIBLING_DIR_SCOPE` values for our paired-file convention, and verify it
+> end-to-end per the "Testing" section before reporting done.
 
 The rest of this file is what the agent needs to actually do that.
 
 ## How it works
 
 1. Claude Code fires a `PostToolUse` event after every `Read` or `Edit` tool
-   call. The hook script gets the tool call as JSON on stdin (`tool_input`,
-   `session_id`, ...).
-2. The script checks whether the touched file's extension matches one side of
-   a configured pair (default: `.sql` / `.yml`) and, optionally, that its path
-   contains a configured directory substring (default: `models`). Anything
-   else → silent no-op.
+   call, and a `UserPromptSubmit` event when the user submits a prompt. The
+   hook script gets the event as JSON on stdin — `tool_input`/`session_id` for
+   `PostToolUse`, `prompt`/`cwd`/`session_id` for `UserPromptSubmit`.
+
+   Both events are needed because `@file` mentions in a prompt are resolved
+   by the CLI as a pre-processing step *before* any tool call happens — the
+   file's content lands in context, but `PostToolUse` never fires for it, so
+   a hook registered on that event alone silently misses every `@`-mention.
+   `UserPromptSubmit` gets the raw, unexpanded prompt text instead (e.g.
+   `"@path/to/model.sql"`, not a resolved file list), so the script extracts
+   `@`-mentioned paths itself via regex and resolves them against the
+   event's `cwd`.
+2. For each candidate path (the `PostToolUse` file, or each `@`-mention found
+   in the prompt), the script checks whether its extension matches one side
+   of a configured pair (default: `.sql` / `.yml`) and, optionally, that its
+   path contains a configured directory substring (default: `models`).
+   Anything else → skipped.
 3. It computes the sibling path by swapping the extension. If that file
    doesn't exist on disk, it's not actually part of a pair (e.g. a `.yml` with
-   no matching `.sql`) → silent no-op. No hardcoded exclusion list needed —
-   the filesystem is the source of truth.
+   no matching `.sql`) → skipped. No hardcoded exclusion list needed — the
+   filesystem is the source of truth.
 4. It dedupes per Claude Code session (a marker file under
-   `${TMPDIR:-/tmp}/claude-sibling-context/<session_id>/`), so re-reading
-   either file later in a long session doesn't re-dump the sibling's full
-   content into context every time — only the first touch of a given pair
-   does.
-5. On a first touch, it emits:
+   `${TMPDIR:-/tmp}/claude-sibling-context/<session_id>/`, keyed by the
+   `EXT_A`-side path regardless of which side or which event triggered it),
+   so re-touching either file later in a long session doesn't re-dump the
+   sibling's full content into context every time — only the first touch of a
+   given pair does.
+5. If anything qualified, it emits:
    ```json
    {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": "Sibling file (auto-loaded so the pair stays in sync): <path>\n\n<full file content>"}}
    ```
-   Claude Code injects `additionalContext` straight into the agent's context —
-   no extra tool call, no dependence on the agent choosing to go read it.
+   (`hookEventName` matches whichever event actually fired.) Claude Code
+   injects `additionalContext` straight into the agent's context — no extra
+   tool call, no dependence on the agent choosing to go read it.
 
 **Trade-off to know about:** this injects the *full* sibling content, not just
 a pointer, because a pointer is a suggestion the agent can ignore — the whole
@@ -66,7 +79,8 @@ one-time cost per pair.
 1. Copy `sibling-context-hook.sh` into your repo, e.g. `.claude/hooks/`, and
    make it executable: `chmod +x .claude/hooks/sibling-context-hook.sh`.
 2. Merge this into your (repo-committed) `.claude/settings.json` — merge the
-   `PostToolUse` array entry in, don't overwrite any hooks you already have:
+   `PostToolUse` **and** `UserPromptSubmit` array entries in, don't overwrite
+   any hooks you already have:
    ```json
    {
      "hooks": {
@@ -80,12 +94,24 @@ one-time cost per pair.
              }
            ]
          }
+       ],
+       "UserPromptSubmit": [
+         {
+           "hooks": [
+             {
+               "type": "command",
+               "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/sibling-context-hook.sh\""
+             }
+           ]
+         }
        ]
      }
    }
    ```
-   `$CLAUDE_PROJECT_DIR` is set by Claude Code to the repo root, so this works
-   regardless of where the session's cwd is.
+   `UserPromptSubmit` has no tool to match against, so it's registered without
+   a `matcher`. `$CLAUDE_PROJECT_DIR` is set by Claude Code to the repo root,
+   so this works regardless of where the session's cwd is. Both entries point
+   at the same script — it branches on `hook_event_name` from stdin.
 3. If `.claude/settings.json` already existed in this repo *before* your
    Claude Code session started, the change should take effect immediately
    (the settings watcher is already watching `.claude/`). If it's a brand-new
@@ -143,14 +169,36 @@ echo "exit code: $?"   # expect 0, no output
 rm -rf "${TMPDIR:-/tmp}/claude-sibling-context/$SESSION"
 ```
 
+Then the `UserPromptSubmit` (`@`-mention) path, same idea but keyed off the
+raw prompt text and `cwd` instead of `tool_input`:
+
+```bash
+SESSION="test-$$"
+REL_PATH="path/to/some_model.sql"   # relative to $REPO, matching the mention below
+
+# First call: should print JSON with additionalContext containing the .yml content
+echo "{\"session_id\":\"$SESSION\",\"hook_event_name\":\"UserPromptSubmit\",\"cwd\":\"$REPO\",\"prompt\":\"@$REL_PATH\"}" \
+  | bash .claude/hooks/sibling-context-hook.sh | jq .
+
+# Second call, same session: should print nothing (dedup, shared with the PostToolUse path)
+echo "{\"session_id\":\"$SESSION\",\"hook_event_name\":\"UserPromptSubmit\",\"cwd\":\"$REPO\",\"prompt\":\"@$REL_PATH\"}" \
+  | bash .claude/hooks/sibling-context-hook.sh
+echo "exit code: $?"   # expect 0, no output
+
+rm -rf "${TMPDIR:-/tmp}/claude-sibling-context/$SESSION"
+```
+
 Then validate the JSON wiring in `settings.json`:
 
 ```bash
 jq -e '.hooks.PostToolUse[] | select(.matcher == "Read|Edit")' .claude/settings.json
+jq -e '.hooks.UserPromptSubmit[0].hooks[0].command' .claude/settings.json
 ```
 
-Finally, prove it fires for real inside a live Claude Code session: `Read` one
-half of an actual pair in your repo and confirm a
-`PostToolUse:Read hook additional context: ...` block with the sibling's
-content shows up; re-read the same file and confirm it does *not* show up a
-second time.
+Finally, prove it fires for real inside a live Claude Code session, both ways:
+`Read` one half of an actual pair and confirm a `PostToolUse:Read hook
+additional context: ...` block with the sibling's content shows up (re-read
+the same file and confirm it does *not* show up a second time); then, in a
+fresh pair you haven't touched yet, `@`-mention one half in your next message
+and confirm a `UserPromptSubmit hook additional context: ...` block shows up
+the same way.

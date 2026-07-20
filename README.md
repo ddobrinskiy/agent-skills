@@ -11,5 +11,5 @@ Personal collection of LLM agent skills and instructions (Claude Code, etc.)
 
 ### Hooks
 
-- **[sibling-file-context-hook](sibling-file-context-hook/README.md)** — A `PostToolUse` hook for [Claude Code](https://claude.com/claude-code) that auto-injects a file's "sibling" into the agent's context whenever either half of the pair is read or edited — so the agent never sees one half in isolation.
+- **[sibling-file-context-hook](sibling-file-context-hook/README.md)** — A `PostToolUse` + `UserPromptSubmit` hook for [Claude Code](https://claude.com/claude-code) that auto-injects a file's "sibling" into the agent's context whenever either half of the pair is read, edited, or `@`-mentioned in a prompt — so the agent never sees one half in isolation.
 <!-- SKILLS-INDEX:END -->
