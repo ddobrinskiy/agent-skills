@@ -1,0 +1,18 @@
+{
+  "description": "Load the matching dbt SQL/YAML sibling after a model file is read.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.codex/hooks/dbt-sibling-context.py",
+            "statusMessage": "Loading dbt sibling context",
+            "additionalContextLimit": 10000
+          }
+        ]
+      }
+    ]
+  }
+}
