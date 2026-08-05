@@ -11,6 +11,7 @@ Personal collection of LLM agent skills and instructions (Claude Code, etc.)
 
 ### Hooks
 
+- **[dbt-sibling-context-hook](dbt-sibling-context-hook/README.md)** — Cross-harness dbt sibling-context hooks for Claude Code, Codex, and OpenCode. Each adapter automatically loads the paired `.sql`/`.yml` model file under `etl/dbt_project/models/`, keeping SQL and YAML together in the agent's context.
 - **[opencode-vision-delegation](opencode-vision-delegation/README.md)** — An [opencode](https://opencode.ai) plugin that makes a vision-less model (e.g. `deepseek-v4-flash`) automatically delegate anything visual to a vision-capable `eyes` subagent, without cluttering the prompt for models that can already see.
 - **[sibling-file-context-hook](sibling-file-context-hook/README.md)** — A `PostToolUse` + `UserPromptSubmit` hook for [Claude Code](https://claude.com/claude-code) that auto-injects a file's "sibling" into the agent's context whenever either half of the pair is read, edited, or `@`-mentioned in a prompt — so the agent never sees one half in isolation.
 <!-- SKILLS-INDEX:END -->
