@@ -3,8 +3,8 @@
 
 Scans top-level directories and builds an index grouped by type:
 - Skills: dirs with a SKILL.md — `name`/`description` from its frontmatter.
-- Hooks: other dirs with a README.md — description is the README's first
-  paragraph after the title.
+- Hooks & extensions: other dirs with a README.md — description is the
+  README's first paragraph after the title.
 
 Rewrites the section of README.md between the SKILLS-INDEX markers.
 Uses stdlib only.
@@ -81,7 +81,7 @@ def build_index() -> str:
             "",
             "\n".join(skills) if skills else "_No skills found._",
             "",
-            "### Hooks",
+            "### Hooks & extensions",
             "",
             "\n".join(hooks) if hooks else "_No hooks found._",
         ]
