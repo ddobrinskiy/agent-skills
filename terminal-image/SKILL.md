@@ -10,7 +10,7 @@ uv run --script scripts/terminal-image.py /absolute/path/to/image.png
 ```
 
 Resolve `scripts/terminal-image.py` relative to this skill's directory. Requires
-`herdr`, `chafa`, and `uv` on PATH and `HERDR_ENV=1`.
+`herdr`, `chafa`, `file`, and `uv` on PATH and `HERDR_ENV=1`.
 
 The script creates one preview pane per calling pane, preserves focus, and
 updates that preview on later calls. Kitty graphics travel through remote Herdr
